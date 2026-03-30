@@ -1,3 +1,4 @@
+
 {
   "name": "@botforge/bot",
   "version": "0.1.0",
@@ -9,9 +10,9 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
-    "@botforge/database": "workspace:*",
-    "@botforge/shared-types": "workspace:*",
-    "@botforge/config": "workspace:*",
+    "@botforge/database": "*",
+    "@botforge/shared-types": "*",
+    "@botforge/config": "*",
     "discord.js": "^14.14.1",
     "dotenv": "^16.4.1"
   },

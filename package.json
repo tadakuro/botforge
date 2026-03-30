@@ -1,14 +1,17 @@
+// package.json
 {
   "name": "botforge",
   "private": true,
   "scripts": {
-    "dev": "turbo dev",
-    "build": "turbo build"
+    "dev": "npx turbo dev",
+    "build": "npx turbo build"
   },
   "devDependencies": {
     "turbo": "^2.0.0",
     "typescript": "^5.4.0"
   },
-  "workspaces": ["apps/*", "packages/*"],
-  "packageManager": "pnpm@9.0.0"
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ]
 }

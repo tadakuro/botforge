@@ -1,19 +1,31 @@
+
 {
   "compilerOptions": {
-    "target": "ES2020",
+    "target": "ES2022",
     "module": "commonjs",
-    "lib": ["ES2020"],
+    "moduleResolution": "node",
+    "lib": ["ES2022"],
     "outDir": "./dist",
-    "rootDir": "./src",
-    "strict": true,
+
+    "rootDir": "../../",
+    "baseUrl": "../../",
+
+    "paths": {
+      "@botforge/database": ["packages/database/src"],
+      "@botforge/shared-types": ["packages/shared-types/src"],
+      "@botforge/config": ["packages/config/src"]
+    },
+
+    "strict": false,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "resolveJsonModule": true,
-    "paths": {
-      "@botforge/database": ["../../packages/database/src"],
-      "@botforge/shared-types": ["../../packages/shared-types/src"],
-      "@botforge/config": ["../../packages/config/src"]
-    }
+    "resolveJsonModule": true
   },
-  "include": ["src"]
+
+  "include": [
+    "src/**/*",
+    "../../packages/database/src/**/*",
+    "../../packages/shared-types/src/**/*",
+    "../../packages/config/src/**/*"
+  ]
 }

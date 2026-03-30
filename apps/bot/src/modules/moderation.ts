@@ -1,5 +1,6 @@
-import { ChatInputCommandInteraction, EmbedBuilder, PermissionFlagsBits, Guild, User } from 'discord.js'
+import { ChatInputCommandInteraction, EmbedBuilder, PermissionFlagsBits, Guild, GuildMember, TextBasedChannel } from 'discord.js'
 import { Db } from 'mongodb'
+import { ObjectId } from 'mongodb'
 
 const PERMS: Record<string, bigint> = {
   ban: PermissionFlagsBits.BanMembers,
@@ -36,7 +37,7 @@ interface NukeEvent {
   userId: string
   action: 'kick' | 'ban' | 'channel_delete' | 'role_delete'
   timestamp: Date
-  _id?: string
+  _id?: ObjectId
 }
 
 export async function handleModeration(interaction: ChatInputCommandInteraction, db: Db): Promise<void> {
@@ -44,7 +45,7 @@ export async function handleModeration(interaction: ChatInputCommandInteraction,
   if (!config?.enabled) return
 
   const { commandName, options, guild, member } = interaction
-  const guildMember = member as { permissions: { has(perm: bigint): boolean } }
+  const guildMember = member as GuildMember
 
   if (!guildMember.permissions.has(PERMS[commandName])) {
     await interaction.reply({ content: '❌ You do not have permission.', ephemeral: true })
@@ -64,10 +65,10 @@ export async function handleModeration(interaction: ChatInputCommandInteraction,
 
     } else if (commandName === 'kick') {
       const target = options.getMember('user')
-      if (!target || !('kick' in target)) { await interaction.editReply('❌ Member not found.'); return }
-      const user = (target as { user: { username: string; id: string } }).user
+      if (!target) { await interaction.editReply('❌ Member not found.'); return }
+      const user = target.user
       const reason = options.getString('reason') || 'No reason provided'
-      await (target as { kick(reason: string): Promise<void> }).kick(reason)
+      await target.kick(reason)
       await interaction.editReply(`✅ Kicked **${user.username}** — ${reason}`)
       await sendModLog(db, config, interaction, 'KICK', user.username, reason, '#f59e0b')
       await logAction(db, interaction, 'KICK', user.id, reason)
@@ -96,8 +97,8 @@ export async function handleModeration(interaction: ChatInputCommandInteraction,
       if (!target) { await interaction.editReply('❌ Member not found.'); return }
       const minutes = options.getInteger('minutes') || 10
       const reason = options.getString('reason') || 'No reason provided'
-      const user = (target as { user: { username: string; id: string } }).user
-      await (target as { timeout(ms: number, reason: string): Promise<void> }).timeout(minutes * 60000, reason)
+      const user = target.user
+      await target.timeout(minutes * 60000, reason)
       await interaction.editReply(`⏱️ Timed out **${user.username}** for ${minutes}m — ${reason}`)
       await sendModLog(db, config, interaction, 'TIMEOUT', user.username, `${minutes}m`, '#f59e0b')
       await logAction(db, interaction, 'TIMEOUT', user.id, reason)
@@ -106,8 +107,8 @@ export async function handleModeration(interaction: ChatInputCommandInteraction,
       const target = options.getMember('user')
       if (!target) { await interaction.editReply('❌ Member not found.'); return }
       const reason = options.getString('reason') || 'No reason provided'
-      const user = (target as { user: { username: string; id: string } }).user
-      await (target as { timeout(ms: number, reason: string): Promise<void> }).timeout(28 * 24 * 60 * 60 * 1000, reason) // 28 days max
+      const user = target.user
+      await target.timeout(28 * 24 * 60 * 60 * 1000, reason)
       await interaction.editReply(`🔇 Muted **${user.username}** — ${reason}`)
       await sendModLog(db, config, interaction, 'MUTE', user.username, reason, '#8b5cf6')
       await logAction(db, interaction, 'MUTE', user.id, reason)
@@ -116,8 +117,8 @@ export async function handleModeration(interaction: ChatInputCommandInteraction,
       const target = options.getMember('user')
       if (!target) { await interaction.editReply('❌ Member not found.'); return }
       const reason = options.getString('reason') || 'Manual unmute'
-      const user = (target as { user: { username: string; id: string } }).user
-      await (target as { timeout(ms: null, reason: string): Promise<void> }).timeout(null, reason)
+      const user = target.user
+      await target.timeout(null, reason)
       await interaction.editReply(`🔊 Unmuted **${user.username}** — ${reason}`)
       await sendModLog(db, config, interaction, 'UNMUTE', user.username, reason, '#10b981')
       await logAction(db, interaction, 'UNMUTE', user.id, reason)
@@ -153,9 +154,10 @@ export async function handleModeration(interaction: ChatInputCommandInteraction,
       await logAction(db, interaction, 'PURGE', interaction.user.id, `Deleted ${deleted.size} messages`)
 
     } else if (commandName === 'slowmode') {
-      const seconds = Math.min(options.getInteger('seconds') || 0, 21600) // 6 hours max
+      const seconds = Math.min(options.getInteger('seconds') || 0, 21600)
       const reason = options.getString('reason') || 'No reason provided'
-      await interaction.channel!.setRateLimitPerUser(seconds, reason)
+      const channel = interaction.channel as TextBasedChannel
+      await channel.setRateLimitPerUser(seconds, reason)
       const status = seconds === 0 ? '✅ Disabled' : `⏱️ Set to ${seconds}s`
       await interaction.editReply(`${status} slowmode — ${reason}`)
       await logAction(db, interaction, 'SLOWMODE', interaction.user.id, `${seconds}s slowmode`)
@@ -194,7 +196,8 @@ export async function handleModeration(interaction: ChatInputCommandInteraction,
       const duration = options.getInteger('duration_minutes') || 0
 
       const everyoneRole = guild!.roles.everyone
-      await channel!.permissionOverwrites.edit(everyoneRole.id, {
+      const textChannel = channel as TextBasedChannel
+      await textChannel.permissionOverwrites.edit(everyoneRole.id, {
         SendMessages: false,
         AddReactions: false,
       }, reason)
@@ -205,7 +208,7 @@ export async function handleModeration(interaction: ChatInputCommandInteraction,
 
       if (duration && duration > 0) {
         setTimeout(async () => {
-          await channel!.permissionOverwrites.edit(everyoneRole.id, {
+          await textChannel.permissionOverwrites.edit(everyoneRole.id, {
             SendMessages: null,
             AddReactions: null,
           }, 'Automatic unlock')
@@ -223,19 +226,17 @@ export async function checkAntiNuke(db: Db, guild: Guild, action: 'kick' | 'ban'
   if (!config?.enabled || !config.antiNuke?.enabled) return false
 
   const settings = config.antiNuke!
-  const timeWindow = settings.timeWindow || 30 // seconds
+  const timeWindow = settings.timeWindow || 30
   const kickThreshold = settings.kickThreshold || 5
   const banThreshold = settings.banThreshold || 10
 
-  // Check if user has protected role
   if (settings.protectedRoles && settings.protectedRoles.length > 0) {
     const member = await guild.members.fetch(userId).catch(() => null)
     if (member?.roles.cache.some(r => settings.protectedRoles!.includes(r.id))) {
-      return false // Protected user, don't apply anti-nuke
+      return false
     }
   }
 
-  // Record the event
   const now = new Date()
   const windowStart = new Date(now.getTime() - timeWindow * 1000)
 
@@ -246,28 +247,23 @@ export async function checkAntiNuke(db: Db, guild: Guild, action: 'kick' | 'ban'
     timestamp: now,
   } as NukeEvent)
 
-  // Count actions in the time window
   const actionCount = await db.collection('nuke_tracker').countDocuments({
     guildId: guild.id,
     userId,
     timestamp: { $gte: windowStart },
   })
 
-  // Clean up old records
   await db.collection('nuke_tracker').deleteMany({
-    timestamp: { $lt: new Date(now.getTime() - 5 * 60 * 1000) }, // Keep 5 minute history
+    timestamp: { $lt: new Date(now.getTime() - 5 * 60 * 1000) },
   })
 
-  // Determine action
   if (actionCount >= banThreshold) {
     try {
-      // Ban the user
       await guild.members.ban(userId, {
         reason: `Anti-nuke: ${actionCount} actions in ${timeWindow}s`,
         deleteMessageSeconds: 0,
       })
 
-      // Send alert to mod log
       const modConfig = config
       if (modConfig.modLogChannel) {
         const channel = guild.channels.cache.get(modConfig.modLogChannel as string)
@@ -277,7 +273,7 @@ export async function checkAntiNuke(db: Db, guild: Guild, action: 'kick' | 'ban'
             .setDescription(`**User:** <@${userId}>\n**Actions:** ${actionCount}\n**Time Window:** ${timeWindow}s`)
             .setColor('#dc2626')
             .setTimestamp()
-          ;(channel as { send(opts: unknown): Promise<void> }).send({ embeds: [embed] }).catch(() => {})
+          ;(channel as TextBasedChannel).send({ embeds: [embed] }).catch(() => {})
         }
       }
 
@@ -287,13 +283,11 @@ export async function checkAntiNuke(db: Db, guild: Guild, action: 'kick' | 'ban'
     }
   } else if (actionCount >= kickThreshold) {
     try {
-      // Kick the user
       const member = await guild.members.fetch(userId).catch(() => null)
       if (member) {
         await member.kick(`Anti-nuke: ${actionCount} actions in ${timeWindow}s`)
       }
 
-      // Send alert to mod log
       const modConfig = config
       if (modConfig.modLogChannel) {
         const channel = guild.channels.cache.get(modConfig.modLogChannel as string)
@@ -303,7 +297,7 @@ export async function checkAntiNuke(db: Db, guild: Guild, action: 'kick' | 'ban'
             .setDescription(`**User:** <@${userId}>\n**Actions:** ${actionCount}\n**Time Window:** ${timeWindow}s`)
             .setColor('#f59e0b')
             .setTimestamp()
-          ;(channel as { send(opts: unknown): Promise<void> }).send({ embeds: [embed] }).catch(() => {})
+          ;(channel as TextBasedChannel).send({ embeds: [embed] }).catch(() => {})
         }
       }
 
@@ -324,7 +318,7 @@ async function sendModLog(
   if (!config.modLogChannel) return
   const ch = interaction.guild!.channels.cache.get(config.modLogChannel as string)
   if (!ch || !('send' in ch)) return
-  ;(ch as { send(opts: unknown): Promise<void> }).send({
+  ;(ch as TextBasedChannel).send({
     embeds: [new EmbedBuilder().setColor(color as `#${string}`).setTitle(`🔨 ${action}`)
       .setDescription(`**User:** ${username}\n**Detail:** ${detail}`).setTimestamp()],
   }).catch(() => {})

@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "lib": ["ES2020"],
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "paths": {
+      "@botforge/database": ["../../packages/database/src"],
+      "@botforge/shared-types": ["../../packages/shared-types/src"],
+      "@botforge/config": ["../../packages/config/src"]
+    }
+  },
+  "include": ["src"]
+}
